@@ -4,9 +4,32 @@ import hashlib
 import sqlite3
 import random
 import string
+import codecs
 import json
+import csv
 import sys
 import os
+
+db_schema = """
+CREATE TABLE IF NOT EXISTS "sponsorTimes" (
+    "videoID"        TEXT NOT NULL,
+    "startTime"      REAL NOT NULL,
+    "endTime"        REAL NOT NULL,
+    "votes"          INTEGER NOT NULL,
+    "locked"         INTEGER NOT NULL default '0',
+    "incorrectVotes" INTEGER NOT NULL default '1',
+    "UUID"           TEXT NOT NULL UNIQUE,
+    "userID"         TEXT NOT NULL,
+    "timeSubmitted"  INTEGER NOT NULL,
+    "views"          INTEGER NOT NULL,
+    "category"       TEXT NOT NULL DEFAULT "sponsor",
+    "shadowHidden"   INTEGER NOT NULL,
+    "hashedVideoID"  TEXT NOT NULL default ""
+);
+CREATE INDEX IF NOT EXISTS sponsorTimes_videoID on sponsorTimes(videoID);
+CREATE INDEX IF NOT EXISTS sponsorTimes_UUID on sponsorTimes(UUID);
+"""
+db_fields = ['videoID', 'startTime', 'endTime', 'votes', 'locked', 'incorrectVotes', 'UUID', 'userID', 'timeSubmitted', 'views', 'category', 'shadowHidden', 'hashedVideoID']
 
 if sys.argv[1] in ["submit", "stats", "username"]:
     if not sys.argv[8]:
@@ -82,8 +105,13 @@ elif sys.argv[1] == "ranges":
     print(":".join(times))
 elif sys.argv[1] == "update":
     try:
-        urllib.request.urlretrieve(sys.argv[3] + "/database.db", sys.argv[2] + ".tmp")
-        os.replace(sys.argv[2] + ".tmp", sys.argv[2])
+        conn = sqlite3.connect(sys.argv[2])
+        with conn:
+            # idempotent, doesn't do anything if the tables and indexes exist
+            conn.executescript(db_schema)
+        with urllib.request.urlopen(sys.argv[3] + "/database/sponsorTimes.csv") as r:
+            with conn:
+                conn.executemany(f"INSERT OR REPLACE INTO sponsorTimes ({', '.join(db_fields)}) VALUES ({', '.join(':' + x for x in db_fields)})", (x for x in csv.DictReader(codecs.getreader("utf-8")(r)) if x["service"] == "YouTube"))
     except PermissionError:
         print("database update failed, file currently in use", file=sys.stderr)
         exit(1)
