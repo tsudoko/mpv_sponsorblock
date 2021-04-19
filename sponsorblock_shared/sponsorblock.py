@@ -109,7 +109,9 @@ elif sys.argv[1] == "update":
         with conn:
             # idempotent, doesn't do anything if the tables and indexes exist
             conn.executescript(db_schema)
-        with urllib.request.urlopen(sys.argv[3] + "/database/sponsorTimes.csv") as r:
+        with urllib.request.urlopen(sys.argv[3] + "/database.json") as r:
+            csv_url = [l["url"] for l in json.load(r)["links"] if l["table"] == "sponsorTimes"][0]
+        with urllib.request.urlopen(sys.argv[3] + csv_url) as r:
             with conn:
                 conn.executemany(f"INSERT OR REPLACE INTO sponsorTimes ({', '.join(db_fields)}) VALUES ({', '.join(':' + x for x in db_fields)})", (x for x in csv.DictReader(codecs.getreader("utf-8")(r)) if x["service"] == "YouTube"))
     except PermissionError:
